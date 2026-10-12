@@ -50,12 +50,14 @@ export function Hero() {
           </ul>
         </div>
 
-        <div className="relative">
-          <div className="overflow-hidden rounded-[2rem] border-8 border-white shadow-card-hover">
-            <SafeImage src={images.hero} alt="Modern dental treatment room with a patient chair" className="aspect-[4/3] w-full lg:aspect-[5/5]" />
+        {/* Portrait frame sized close to the photo's native resolution so it stays sharp. */}
+        <div className="relative mx-auto w-full max-w-[20rem] pb-6">
+          <div className="absolute -inset-x-10 inset-y-8 -rotate-3 rounded-[2.5rem] bg-gradient-to-br from-brand-100 to-sky" aria-hidden="true" />
+          <div className="relative overflow-hidden rounded-[2rem] border-8 border-white shadow-card-hover">
+            <SafeImage src={images.hero} alt="Clinic treatment room with a dental chair and equipment" className="aspect-[232/317] w-full" />
           </div>
-          <div className="card absolute -bottom-6 left-4 flex items-center gap-3 p-4 sm:left-[-1.5rem]">
-            <span className="grid size-11 place-items-center rounded-full bg-brand-700 text-white">
+          <div className="card absolute -left-6 bottom-0 flex items-center gap-3 p-4 sm:-left-20">
+            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-700 text-white">
               <CalendarCheck className="size-5" aria-hidden="true" />
             </span>
             <div>
