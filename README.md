@@ -20,7 +20,7 @@ The build is fully static and uses hash routing (`/#/book`), so `dist/` can be h
 | Route | What it does |
 | --- | --- |
 | `/` | Home: hero, about, services, dentists, why choose us, testimonials, contact form, map and directions |
-| `/#/book` | Five-step booking: treatment → dentist → date → time → details. Accepts `?service=` and `?dentist=` |
+| `/#/book` | Four-step booking: treatment → dentist → date & time (availability calendar with open-slot counts per day and the time slots beside it) → details. Accepts `?service=` and `?dentist=` |
 | `/#/booking/:ref` | Confirmation with the booking reference, Add to Calendar and Print |
 | `/#/my-appointment` | Patients look up a booking (reference + mobile) and can cancel it |
 | `/#/admin` | Admin dashboard. Demo PIN **1234** |

@@ -27,10 +27,11 @@ import {
   getSlots,
 } from '../lib/availability'
 import { BookingError, useClinic } from '../lib/store'
-import { addDays, dateKey, formatDateLong, formatTime, toMinutes, WEEKDAYS_SHORT } from '../lib/time'
+import { addDays, dateKey, formatDateLong, formatDateShort, formatTime, toMinutes, WEEKDAYS_SHORT } from '../lib/time'
 import { isValidEmail, isValidName, normalizeMobile } from '../lib/validation'
 
-const STEPS = ['Treatment', 'Dentist', 'Date', 'Time', 'Your details'] as const
+const STEPS = ['Treatment', 'Dentist', 'Date & Time', 'Your details'] as const
+const FEW_SLOTS = 3
 
 /** Re-render every minute so slots that pass while the page is open disappear. */
 function useNow() {
@@ -106,7 +107,7 @@ export function BookingPage() {
     if (time && !availableSlots.some((s) => s.time === time)) {
       setTime(null)
       setBookingError(`${formatTime(time)} is no longer available — it may have just been booked. Please choose another time.`)
-      if (step > 3) setStep(3)
+      if (step > 2) setStep(2)
     }
   }, [availableSlots, time, step])
 
@@ -119,18 +120,33 @@ export function BookingPage() {
     setTime(null)
     setStep(1)
   }
+  /** Earliest date in the booking window with at least one open slot. */
+  const firstAvailableDate = (dentist: string): string | null => {
+    for (let i = 0; i <= settings.bookingWindowDays; i++) {
+      const d = dateKey(addDays(now, i))
+      if (dayAvailability({ ...ctx(d), dentistId: dentist }).bookable) return d
+    }
+    return null
+  }
   const chooseDentist = (id: string) => {
     setDentistId(id)
-    setDate(null)
+    // Open the calendar on the next available day so times show straight away.
+    setDate(firstAvailableDate(id))
     setTime(null)
+    setBookingError(null)
     setStep(2)
   }
   const chooseDate = (d: string) => {
     setDate(d)
     setTime(null)
+    setBookingError(null)
+    // On small screens the time list sits below the calendar — bring it into view.
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      requestAnimationFrame(() => document.getElementById('time-slots')?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
+    }
   }
 
-  const canAdvance = [!!serviceId, !!dentistId, !!date, !!time, true][step]
+  const canAdvance = [!!serviceId, !!dentistId, !!date && !!time, true][step]
 
   const submit = (ev: FormEvent) => {
     ev.preventDefault()
@@ -159,7 +175,7 @@ export function BookingPage() {
       if (err instanceof BookingError) {
         setBookingError(err.message)
         setTime(null)
-        setStep(3)
+        setStep(2)
       } else throw err
     }
   }
@@ -212,7 +228,8 @@ export function BookingPage() {
         </ol>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-3">
-          <div className="card p-5 sm:p-8 lg:col-span-2">
+          {/* The date & time step uses the full width; its own header shows the selection. */}
+          <div className={`card p-5 sm:p-8 ${step === 2 ? 'lg:col-span-3' : 'lg:col-span-2'}`}>
             {/* Step 1 — treatment */}
             {step === 0 && (
               <fieldset>
@@ -290,112 +307,136 @@ export function BookingPage() {
               </fieldset>
             )}
 
-            {/* Step 3 — date */}
+            {/* Step 3 — date & time */}
             {step === 2 && serviceId && dentistId && (
               <div>
-                <h2 className="text-xl font-semibold">3. Select a date</h2>
-                <p className="mt-1 text-sm text-slate-500">Dates with a dot have open slots. Closed days, holidays and fully booked days can't be selected.</p>
-                <div className="mx-auto mt-6 max-w-md">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold">3. Pick a date & time</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Each day shows how many slots are open. Closed days, holidays and fully booked days can't be selected.
+                    </p>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    <span className="font-medium text-ink-900">{service?.name}</span> ·{' '}
+                    {dentistId === ANY_DENTIST ? 'Any available dentist' : dentist?.name}{' '}
+                    <button type="button" className="font-semibold text-brand-700 hover:underline" onClick={() => setStep(1)}>Change</button>
+                  </p>
+                </div>
+
+                <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
                   <Calendar
+                    key={`${serviceId}|${dentistId}`}
                     value={date}
                     onChange={chooseDate}
                     minDate={today}
                     maxDate={maxDate}
                     getDayState={(key) => {
                       const a = dayAvailability(ctx(key))
+                      if (a.bookable) {
+                        const few = a.openSlots <= FEW_SLOTS
+                        return {
+                          disabled: false,
+                          tone: few ? 'few' : 'available',
+                          badge: few ? `${a.openSlots} left` : `${a.openSlots} slots`,
+                          note: `${a.openSlots} slot${a.openSlots === 1 ? '' : 's'} open`,
+                        }
+                      }
                       const holiday = getHoliday(settings, key)
+                      const full = a.reason === 'fully-booked'
+                      const outside = a.reason === 'past' || a.reason === 'beyond-window'
                       return {
-                        disabled: !a.bookable,
-                        note: a.bookable ? `${a.openSlots} slots open` : holiday ? `Holiday: ${holiday.label}` : a.reason ? CLOSED_REASON_TEXT[a.reason] : undefined,
+                        disabled: true,
+                        tone: full ? 'full' : 'closed',
+                        badge: full ? 'Full' : outside ? undefined : holiday ? 'Holiday' : 'Closed',
+                        note: holiday && !outside ? `Holiday: ${holiday.label}` : a.reason ? CLOSED_REASON_TEXT[a.reason] : undefined,
                       }
                     }}
                   />
-                  <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500">
-                    <span className="flex items-center gap-1.5"><span className="size-3 rounded bg-brand-50 ring-1 ring-brand-200" />Available</span>
-                    <span className="flex items-center gap-1.5"><span className="size-3 rounded bg-brand-700" />Selected</span>
-                    <span className="flex items-center gap-1.5"><span className="size-3 rounded ring-2 ring-brand-300" />Today</span>
-                    <span className="flex items-center gap-1.5"><span className="size-3 rounded bg-white ring-1 ring-slate-200" />Unavailable</span>
+
+                  <div id="time-slots" className="scroll-mt-24 lg:border-l lg:border-slate-100 lg:pl-8">
+                    {!date ? (
+                      <div className="grid h-full min-h-48 place-items-center rounded-2xl border border-dashed border-slate-300 p-8 text-center">
+                        <div>
+                          <CalendarDays className="mx-auto size-10 text-slate-300" aria-hidden="true" />
+                          <p className="mt-3 font-semibold text-ink-900">Select a date</p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {firstAvailableDate(dentistId) ? 'Available times will appear here.' : 'No open slots in the booking window. Please call the clinic.'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <h3 className="text-base font-semibold">{formatDateLong(date)}</h3>
+                        <p className="mt-0.5 text-sm text-slate-500" role="status">
+                          {availableSlots.length} slot{availableSlots.length === 1 ? '' : 's'} available
+                        </p>
+
+                        {bookingError && (
+                          <div className="mt-4 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800" role="alert">
+                            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                            {bookingError}
+                          </div>
+                        )}
+
+                        {availableSlots.length === 0 ? (
+                          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-6 text-center">
+                            <Clock className="mx-auto size-9 text-slate-300" aria-hidden="true" />
+                            <p className="mt-3 font-semibold text-ink-900">No time slots are available on this date.</p>
+                            <p className="mt-1 text-sm text-slate-500">All remaining slots are booked or have passed. Please pick another date on the calendar.</p>
+                          </div>
+                        ) : (
+                          <div className="mt-5 space-y-5">
+                            {groups.map(({ label, icon: Icon, test }) => {
+                              const group = slots.filter((s) => test(toMinutes(s.time)))
+                              if (group.length === 0) return null
+                              return (
+                                <fieldset key={label}>
+                                  <legend className="mb-2.5 flex items-center gap-2 text-sm font-semibold text-ink-700">
+                                    <Icon className="size-4 text-brand-600" aria-hidden="true" /> {label}
+                                  </legend>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {group.map((s) => {
+                                      const booked = s.status === 'booked'
+                                      const selected = s.time === time
+                                      return (
+                                        <button
+                                          key={s.time}
+                                          type="button"
+                                          disabled={booked}
+                                          onClick={() => { setTime(s.time); setBookingError(null) }}
+                                          aria-pressed={selected}
+                                          aria-label={`${formatTime(s.time)}${booked ? ' — booked' : ''}`}
+                                          className={`rounded-xl border px-1 py-2.5 text-sm font-semibold tabular-nums transition ${
+                                            selected
+                                              ? 'border-brand-700 bg-brand-700 text-white shadow-md'
+                                              : booked
+                                                ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300 line-through'
+                                                : 'border-brand-200 bg-white text-brand-800 hover:border-brand-500 hover:bg-brand-50'
+                                          }`}
+                                        >
+                                          {formatTime(s.time)}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </fieldset>
+                              )
+                            })}
+                            <p className="text-xs text-slate-500">Crossed-out times are already booked. Past times for today are hidden.</p>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
-                  {date && (
-                    <p className="mt-5 rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-900" role="status">
-                      <CalendarDays className="mr-1.5 inline size-4 align-[-3px]" aria-hidden="true" />
-                      {formatDateLong(date)} — {availableSlots.length} slot{availableSlots.length === 1 ? '' : 's'} available
-                    </p>
-                  )}
                 </div>
               </div>
             )}
 
-            {/* Step 4 — time */}
-            {step === 3 && date && (
-              <div>
-                <h2 className="text-xl font-semibold">4. Select a time</h2>
-                <p className="mt-1 text-sm text-slate-500">{formatDateLong(date)}</p>
-
-                {bookingError && (
-                  <div className="mt-4 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800" role="alert">
-                    <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                    {bookingError}
-                  </div>
-                )}
-
-                {availableSlots.length === 0 ? (
-                  <div className="mt-6 rounded-2xl border border-dashed border-slate-300 p-8 text-center">
-                    <Clock className="mx-auto size-10 text-slate-300" aria-hidden="true" />
-                    <p className="mt-3 font-semibold text-ink-900">No time slots are available on this date.</p>
-                    <p className="mt-1 text-sm text-slate-500">All remaining slots are booked or have passed. Please choose another date.</p>
-                    <button type="button" className="btn-secondary mt-5" onClick={() => { setDate(null); setStep(2) }}>
-                      <CalendarDays className="size-4" aria-hidden="true" /> Choose another date
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-6 space-y-6">
-                    {groups.map(({ label, icon: Icon, test }) => {
-                      const group = slots.filter((s) => test(toMinutes(s.time)))
-                      if (group.length === 0) return null
-                      return (
-                        <fieldset key={label}>
-                          <legend className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink-700">
-                            <Icon className="size-4 text-brand-600" aria-hidden="true" /> {label}
-                          </legend>
-                          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
-                            {group.map((s) => {
-                              const booked = s.status === 'booked'
-                              const selected = s.time === time
-                              return (
-                                <button
-                                  key={s.time}
-                                  type="button"
-                                  disabled={booked}
-                                  onClick={() => { setTime(s.time); setBookingError(null) }}
-                                  aria-pressed={selected}
-                                  aria-label={`${formatTime(s.time)}${booked ? ' — booked' : ''}`}
-                                  className={`rounded-xl border px-2 py-2.5 text-sm font-semibold tabular-nums transition ${
-                                    selected
-                                      ? 'border-brand-700 bg-brand-700 text-white shadow-md'
-                                      : booked
-                                        ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300 line-through'
-                                        : 'border-brand-200 bg-white text-brand-800 hover:border-brand-500 hover:bg-brand-50'
-                                  }`}
-                                >
-                                  {formatTime(s.time)}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </fieldset>
-                      )
-                    })}
-                    <p className="text-xs text-slate-500">Greyed-out times are already booked. Past times for today are hidden.</p>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Step 5 — patient details */}
-            {step === 4 && time && (
+            {step === 3 && time && (
               <form onSubmit={submit} noValidate>
-                <h2 className="text-xl font-semibold">5. Your details</h2>
+                <h2 className="text-xl font-semibold">4. Your details</h2>
                 <p className="mt-1 text-sm text-slate-500">We only ask for what's needed to confirm your appointment.</p>
                 <div className="mt-6 grid gap-5 sm:grid-cols-2">
                   <Field id="b-name" label="Full name *" error={errors.name} className="sm:col-span-2">
@@ -426,7 +467,7 @@ export function BookingPage() {
                   details are used only for scheduling.
                 </p>
                 <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-                  <button type="button" className="btn-ghost" onClick={() => setStep(3)}>
+                  <button type="button" className="btn-ghost" onClick={() => setStep(2)}>
                     <ArrowLeft className="size-4" aria-hidden="true" /> Back
                   </button>
                   <button type="submit" className="btn-primary px-6 py-3" disabled={submitting}>
@@ -437,20 +478,21 @@ export function BookingPage() {
               </form>
             )}
 
-            {step < 4 && (
+            {step < 3 && (
               <div className="mt-8 flex items-center justify-between border-t border-slate-100 pt-6">
                 <button type="button" className="btn-ghost" onClick={() => setStep((s) => s - 1)} disabled={step === 0}>
                   <ArrowLeft className="size-4" aria-hidden="true" /> Back
                 </button>
                 <button type="button" className="btn-primary" onClick={() => setStep((s) => s + 1)} disabled={!canAdvance}>
-                  Continue <ArrowRight className="size-4" aria-hidden="true" />
+                  {step === 2 && date && time ? `Continue with ${formatTime(time)}, ${formatDateShort(date)}` : 'Continue'}
+                  <ArrowRight className="size-4" aria-hidden="true" />
                 </button>
               </div>
             )}
           </div>
 
           {/* Summary */}
-          <aside className="lg:sticky lg:top-24 lg:self-start">
+          <aside className={`lg:sticky lg:top-24 lg:self-start ${step === 2 ? 'hidden' : ''}`}>
             <div className="card overflow-hidden">
               <div className="bg-brand-700 px-6 py-4 text-white">
                 <h2 className="font-display text-base font-semibold text-white">Appointment summary</h2>
@@ -464,7 +506,7 @@ export function BookingPage() {
                   onEdit={serviceId ? () => setStep(1) : undefined}
                 />
                 <SummaryRow icon={CalendarDays} label="Date" value={date ? formatDateLong(date) : undefined} onEdit={dentistId ? () => setStep(2) : undefined} />
-                <SummaryRow icon={Clock} label="Time" value={time ? formatTime(time) : undefined} onEdit={date ? () => setStep(3) : undefined} />
+                <SummaryRow icon={Clock} label="Time" value={time ? formatTime(time) : undefined} onEdit={date ? () => setStep(2) : undefined} />
               </dl>
               <div className="border-t border-slate-100 bg-slate-50 px-6 py-4 text-xs text-slate-500">
                 {service ? <>Fee: {service.price}</> : 'Select a treatment to begin.'}
