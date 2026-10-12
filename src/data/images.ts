@@ -4,16 +4,19 @@
  * Every image is rendered through <SafeImage>, which falls back to a branded
  * illustration if a URL fails to load.
  */
+import dentalCheckup from '../assets/dental-checkup.png'
+
 const u = (id: string, w = 1200) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${w}&q=75`
 
 export const images = {
   hero: u('photo-1629909613654-28e377c37b09', 1400),
   about: u('photo-1606811971618-4486d14f3f99'),
-  aboutSecondary: u('photo-1588776814546-1ffcf47267a5', 800),
+  // Clinic-supplied photo, bundled locally so it always loads.
+  aboutSecondary: dentalCheckup,
   booking: u('photo-1609840114035-3c981b782dfe', 900),
   services: {
-    checkup: u('photo-1588776814546-1ffcf47267a5', 700),
+    checkup: dentalCheckup,
     cleaning: u('photo-1606811971618-4486d14f3f99', 700),
     filling: u('photo-1598256989800-fe5f95da9787', 700),
     rootCanal: u('photo-1629909613654-28e377c37b09', 700),

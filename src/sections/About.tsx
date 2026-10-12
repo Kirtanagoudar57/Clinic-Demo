@@ -14,7 +14,7 @@ export function About() {
           <SafeImage src={images.about} alt="Dentist preparing instruments in a clean treatment room" className="aspect-[4/3] w-full rounded-3xl shadow-card" />
           <SafeImage
             src={images.aboutSecondary}
-            alt="Dentist talking with a patient"
+            alt="Dentist examining a patient's teeth with a dental mirror"
             className="absolute -bottom-8 -right-2 hidden aspect-square w-48 rounded-2xl border-8 border-white shadow-card-hover sm:block"
           />
         </div>
