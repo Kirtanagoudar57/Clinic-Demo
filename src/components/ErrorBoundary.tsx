@@ -4,6 +4,8 @@ import { clearStoredData } from '../lib/store'
 
 interface State {
   error: Error | null
+  componentStack: string
+  copied: boolean
 }
 
 /**
@@ -12,19 +14,37 @@ interface State {
  * the browser, so "Reset demo data" is offered as the fix.
  */
 export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, State> {
-  state: State = { error: null }
+  state: State = { error: null, componentStack: '', copied: false }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Page crashed:', error, info.componentStack)
+    this.setState({ componentStack: info.componentStack ?? '' })
+  }
+
+  /** Everything needed to diagnose the crash, in one copyable block. */
+  details() {
+    const { error, componentStack } = this.state
+    return [
+      `${error?.name}: ${error?.message}`,
+      `Page: ${window.location.href}`,
+      `Browser: ${navigator.userAgent}`,
+      `Time: ${new Date().toString()}`,
+      '',
+      'Stack:',
+      (error?.stack ?? '').split('\n').slice(0, 8).join('\n'),
+      '',
+      'Components:',
+      componentStack.trim().split('\n').slice(0, 8).join('\n'),
+    ].join('\n')
   }
 
   componentDidUpdate(prev: { resetKey?: string }) {
     // Navigating to another page clears the error.
-    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null })
+    if (this.state.error && prev.resetKey !== this.props.resetKey) this.setState({ error: null, componentStack: '' })
   }
 
   render() {
@@ -52,13 +72,24 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
             >
               <RotateCcw className="size-4" aria-hidden="true" /> Reset demo data & reload
             </button>
-            <a href="#/" onClick={() => this.setState({ error: null })} className="btn-secondary">
+            <a href="#/" onClick={() => this.setState({ error: null, componentStack: '' })} className="btn-secondary">
               <Home className="size-4" aria-hidden="true" /> Go to home page
             </a>
           </div>
-          <details className="mt-6 text-left text-xs text-slate-500">
+          <details className="mt-6 text-left text-xs text-slate-500" open>
             <summary className="cursor-pointer">Technical details</summary>
-            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3">{error.message}</pre>
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-700">
+              {this.details()}
+            </pre>
+            <button
+              type="button"
+              className="btn-ghost mt-2 px-3 py-1.5 text-xs"
+              onClick={() => {
+                navigator.clipboard?.writeText(this.details()).then(() => this.setState({ copied: true }), () => {})
+              }}
+            >
+              {this.state.copied ? 'Copied!' : 'Copy details'}
+            </button>
           </details>
         </div>
       </div>
