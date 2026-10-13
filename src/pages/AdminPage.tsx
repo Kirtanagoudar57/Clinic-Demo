@@ -173,7 +173,9 @@ function SaveBar({ dirty, onSave, onReset }: { dirty: boolean; onSave: () => voi
 
 function useDraft<T>(source: T) {
   const [draft, setDraft] = useState<T>(source)
-  useEffect(() => setDraft(source), [source])
+  useEffect(() => {
+    setDraft(source)
+  }, [source])
   const dirty = JSON.stringify(draft) !== JSON.stringify(source)
   return { draft, setDraft, dirty, reset: () => setDraft(source) }
 }

@@ -21,7 +21,9 @@ export function Navbar() {
   const goTo = useSectionNav()
   const location = useLocation()
 
-  useEffect(() => setOpen(false), [location.pathname])
+  useEffect(() => {
+    setOpen(false)
+  }, [location.pathname])
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8)
     onScroll()

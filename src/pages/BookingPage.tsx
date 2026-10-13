@@ -76,7 +76,11 @@ export function BookingPage() {
   const [bookingError, setBookingError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => window.scrollTo({ top: 0 }), [step])
+  // Block body on purpose: newer browsers make scrollTo() return a Promise, and
+  // React would treat a returned value as the effect's cleanup function.
+  useEffect(() => {
+    window.scrollTo({ top: 0 })
+  }, [step])
 
   const service = serviceId ? serviceById(serviceId) : undefined
   const eligible = useMemo(() => (serviceId ? dentistsForService(dentists, serviceId) : []), [dentists, serviceId])
