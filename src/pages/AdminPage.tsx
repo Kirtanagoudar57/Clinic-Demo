@@ -25,6 +25,15 @@ import type { AppointmentStatus, ClinicSettings, Dentist, Service, Weekday } fro
 
 const SESSION_KEY = 'dc.admin.session'
 
+function setAdminSession(on: boolean) {
+  try {
+    if (on) sessionStorage.setItem(SESSION_KEY, '1')
+    else sessionStorage.removeItem(SESSION_KEY)
+  } catch {
+    /* storage disabled — the login still works for this page view */
+  }
+}
+
 const TABS = [
   { id: 'appointments', label: 'Appointments', icon: LayoutDashboard },
   { id: 'schedule', label: 'Hours & Slots', icon: Clock },
@@ -46,7 +55,7 @@ export function AdminPage() {
   })
   const [tab, setTab] = useState<TabId>('appointments')
 
-  if (!authed) return <Login pin={settings.adminPin} onSuccess={() => { sessionStorage.setItem(SESSION_KEY, '1'); setAuthed(true) }} />
+  if (!authed) return <Login pin={settings.adminPin} onSuccess={() => { setAdminSession(true); setAuthed(true) }} />
 
   const unread = messages.filter((m) => !m.read).length
 
@@ -58,7 +67,7 @@ export function AdminPage() {
             <h1 className="text-2xl font-semibold sm:text-3xl">Admin dashboard</h1>
             <p className="mt-1 text-sm text-slate-500">Manage appointments, opening hours, slots, dentists and services.</p>
           </div>
-          <button type="button" className="btn-ghost" onClick={() => { sessionStorage.removeItem(SESSION_KEY); setAuthed(false) }}>
+          <button type="button" className="btn-ghost" onClick={() => { setAdminSession(false); setAuthed(false) }}>
             <LogOut className="size-4" aria-hidden="true" /> Sign out
           </button>
         </div>

@@ -100,16 +100,71 @@ interface ClinicState {
   messages: ContactMessage[]
 }
 
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isStr = (v: unknown): v is string => typeof v === 'string'
+const strArr = (v: unknown) => Array.isArray(v) && v.every(isStr)
+
+/**
+ * Saved data may come from an older version of the site or a half-finished
+ * edit. Fill in missing fields from the defaults and drop records that can't
+ * be repaired, so bad storage can never crash a page.
+ */
+function sanitizeSettings(raw: unknown): ClinicSettings {
+  if (!isObj(raw)) return defaultSettings
+  const s = { ...defaultSettings, ...raw } as ClinicSettings
+  const hoursOk =
+    Array.isArray(s.weeklyHours) &&
+    s.weeklyHours.length === 7 &&
+    s.weeklyHours.every((d) => isObj(d) && typeof d.open === 'boolean' && isStr(d.start) && isStr(d.end))
+  return {
+    ...s,
+    weeklyHours: hoursOk ? s.weeklyHours : defaultSettings.weeklyHours,
+    holidays: Array.isArray(s.holidays) ? s.holidays.filter((h) => isObj(h) && isStr(h.date) && isStr(h.label)) : [],
+    slotTimes: strArr(s.slotTimes) ? s.slotTimes : defaultSettings.slotTimes,
+    slotDurationMins: Number(s.slotDurationMins) > 0 ? Number(s.slotDurationMins) : defaultSettings.slotDurationMins,
+    bookingWindowDays: Number(s.bookingWindowDays) > 0 ? Number(s.bookingWindowDays) : defaultSettings.bookingWindowDays,
+  }
+}
+
+function sanitizeList<T extends { id: string }>(raw: unknown, defaults: T[], arrayKeys: (keyof T)[] = []): T[] {
+  if (!Array.isArray(raw)) return defaults
+  const template = defaults[0]
+  return raw
+    .filter((r) => isObj(r) && isStr(r.id))
+    .map((r) => ({ ...template, ...defaults.find((d) => d.id === r.id), ...r }) as T)
+    .filter((r) => arrayKeys.every((k) => Array.isArray(r[k])))
+}
+
+function sanitizeAppointments(raw: unknown): Appointment[] | null {
+  if (!Array.isArray(raw)) return null
+  return raw.filter(
+    (a): a is Appointment =>
+      isObj(a) && isStr(a.ref) && isStr(a.date) && isStr(a.time) && isStr(a.dentistId) && isStr(a.serviceId) && isStr(a.status),
+  )
+}
+
 function loadState(): ClinicState {
-  const settings = { ...defaultSettings, ...read(KEYS.settings, defaultSettings) }
-  const services = read(KEYS.services, defaultServices)
-  const dentists = read(KEYS.dentists, defaultDentists)
-  let appointments = read<Appointment[] | null>(KEYS.appointments, null)
+  const settings = sanitizeSettings(read<unknown>(KEYS.settings, null))
+  const services = sanitizeList(read<unknown>(KEYS.services, null), defaultServices)
+  const dentists = sanitizeList(read<unknown>(KEYS.dentists, null), defaultDentists, ['workingDays', 'leaveDates', 'serviceIds'])
+  let appointments = sanitizeAppointments(read<unknown>(KEYS.appointments, null))
   if (appointments === null) {
     appointments = seedAppointments(settings, dentists)
     write(KEYS.appointments, appointments)
   }
-  return { settings, services, dentists, appointments, messages: read(KEYS.messages, []) }
+  const messages = read<unknown>(KEYS.messages, [])
+  return { settings, services, dentists, appointments, messages: Array.isArray(messages) ? messages.filter(isObj) as unknown as ContactMessage[] : [] }
+}
+
+/** Wipe all saved demo data (used by admin reset and the crash screen). */
+export function clearStoredData() {
+  Object.values(KEYS).forEach((k) => {
+    try {
+      localStorage.removeItem(k)
+    } catch {
+      /* storage disabled */
+    }
+  })
 }
 
 interface ClinicContextValue extends ClinicState {
@@ -210,13 +265,13 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
       saveDentists: (d) => update('dentists', d),
       addMessage: (m) =>
         update('messages', [
-          { ...m, id: crypto.randomUUID(), createdAt: new Date().toISOString(), read: false },
+          { ...m, id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, createdAt: new Date().toISOString(), read: false },
           ...messages,
         ]),
       markMessageRead: (id, read) => update('messages', messages.map((m) => (m.id === id ? { ...m, read } : m))),
       deleteMessage: (id) => update('messages', messages.filter((m) => m.id !== id)),
       resetDemo: () => {
-        Object.values(KEYS).forEach((k) => localStorage.removeItem(k))
+        clearStoredData()
         setState(loadState())
       },
     }

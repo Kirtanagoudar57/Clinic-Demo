@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { HashRouter, Outlet, Route, Routes, useLocation } from 'react-router-dom'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Footer } from './components/Footer'
 import { Navbar } from './components/Navbar'
 import { ClinicProvider } from './lib/store'
@@ -23,7 +24,9 @@ function Layout() {
       </a>
       <Navbar />
       <main id="main" tabIndex={-1} className="flex-1 outline-none">
-        <Outlet />
+        <ErrorBoundary resetKey={pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
       <Footer />
     </div>
@@ -32,19 +35,21 @@ function Layout() {
 
 export default function App() {
   return (
-    <ClinicProvider>
-      <HashRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<HomePage />} />
-            <Route path="book" element={<BookingPage />} />
-            <Route path="booking/:ref" element={<ConfirmationPage />} />
-            <Route path="my-appointment" element={<MyAppointmentPage />} />
-            <Route path="admin" element={<AdminPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Route>
-        </Routes>
-      </HashRouter>
-    </ClinicProvider>
+    <ErrorBoundary>
+      <ClinicProvider>
+        <HashRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route index element={<HomePage />} />
+              <Route path="book" element={<BookingPage />} />
+              <Route path="booking/:ref" element={<ConfirmationPage />} />
+              <Route path="my-appointment" element={<MyAppointmentPage />} />
+              <Route path="admin" element={<AdminPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
+          </Routes>
+        </HashRouter>
+      </ClinicProvider>
+    </ErrorBoundary>
   )
 }
